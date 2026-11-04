@@ -1,0 +1,8 @@
+<clickhouse>
+    <!-- Railway's private network is IPv6-only, so ClickHouse has to bind :: as
+         well as 0.0.0.0. listen_try keeps startup from failing on a host where
+         one of the two families is unavailable. -->
+    <listen_host>::</listen_host>
+    <listen_host>0.0.0.0</listen_host>
+    <listen_try>1</listen_try>
+</clickhouse>

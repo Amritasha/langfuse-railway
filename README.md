@@ -1,31 +1,49 @@
-# Deploy and Host Langfuse on Railway
+# Langfuse v4 on Railway
 
-Langfuse is an open-source LLM observability and analytics platform. It helps teams trace, debug, evaluate, and monitor LLM applications with detailed logs, prompt versioning, user feedback collection, and cost analytics — essential infrastructure for running AI applications reliably in production.
+Source for the [Langfuse v4](https://langfuse.com) Railway template: open-source LLM
+observability — tracing, evals, prompt management and cost analytics.
 
-## About Hosting Langfuse
+## What the template deploys
 
-Hosting Langfuse requires running its Next.js web application alongside a PostgreSQL database and a ClickHouse instance for high-volume trace analytics. PostgreSQL stores user accounts, projects, prompts, and configuration. ClickHouse handles the append-heavy ingestion of LLM traces and spans at scale. On Railway, all services are provisioned and networked within the same project. Redis is optionally used for rate limiting and caching. Langfuse exposes an SDK-compatible ingestion API, so your existing LLM app sends traces with minimal code changes.
+| Service | Source | Notes |
+| --- | --- | --- |
+| `langfuse-web` | `langfuse/langfuse:4` | The UI and ingestion API. Public domain, port 3000. |
+| `langfuse-worker` | `langfuse/langfuse-worker:4` | Background ingestion and evals. Private only, port 3030. |
+| `Postgres` | Railway database | Users, projects, prompts, config. |
+| `clickhouse` | `clickhouse/clickhouse-server:26.3` | Trace and span storage. Volume at `/var/lib/clickhouse`. |
+| `Redis` | Railway database | Queues, caching, rate limiting. |
+| `Bucket` | Railway storage bucket | S3-compatible event, media and batch-export storage. |
 
-## Common Use Cases
+## Why this layout
 
-- Tracing and debugging LLM chains, agents, and RAG pipelines in production
-- Evaluating prompt quality and tracking prompt version performance over time
-- Monitoring LLM token usage and costs across models and users
+**ClickHouse binds IPv6.** Railway's private network is IPv6-only, and the stock
+`clickhouse-server` image listens on `0.0.0.0` alone, so `langfuse-web` cannot reach
+it. `clickhouse/railway-listen.xml` adds `::` to `listen_host`. Without it the web
+service fails its ClickHouse migration on first boot.
 
-## Dependencies for Langfuse Hosting
+**`CLICKHOUSE_CLUSTER_ENABLED=false`.** Langfuse defaults this to `true`, which makes
+the migration issue `ON CLUSTER` statements that a single node rejects. This is the
+most common reason a single-node Langfuse deploy never finishes migrating.
 
-- **PostgreSQL** — stores users, projects, prompts, evaluations, and platform configuration
-- **ClickHouse** — high-performance columnar store for LLM trace and span ingestion at scale
+**A Railway bucket instead of MinIO.** Langfuse v4 requires S3 for event uploads.
+Railway buckets are S3-compatible and cost nothing to run, so the template uses one
+rather than a MinIO container that would need its own service and volume.
 
-### Deployment Dependencies
+**Long health-check timeouts.** The first boot runs both the Postgres and the
+ClickHouse migrations before the web service answers, which takes a few minutes.
 
-- [Langfuse Documentation](https://langfuse.com/docs)
-- [Langfuse GitHub Repository](https://github.com/langfuse/langfuse)
-- [Langfuse Self-Hosting Guide](https://langfuse.com/docs/deployment/self-host)
-- [Railway PostgreSQL Plugin](https://docs.railway.com/databases/postgresql)
+## Layout
 
-## Why Deploy Langfuse on Railway?
+```
+web/         Dockerfile + railway.toml for langfuse-web
+worker/      Dockerfile + railway.toml for langfuse-worker
+clickhouse/  Dockerfile, IPv6 listen config, railway.toml
+```
 
-Railway is a singular platform to deploy your infrastructure stack. Railway will host your infrastructure so you do not have to deal with configuration, while allowing you to vertically and horizontally scale it.
+Each directory is a service root in the template.
 
-By deploying Langfuse on Railway, you are one step closer to supporting a complete full-stack application with minimal burden. Host your servers, databases, AI agents, and more on Railway.
+## Upstream
+
+- [Langfuse docs](https://langfuse.com/docs)
+- [Self-hosting configuration reference](https://langfuse.com/self-hosting/configuration)
+- [langfuse/langfuse](https://github.com/langfuse/langfuse)
